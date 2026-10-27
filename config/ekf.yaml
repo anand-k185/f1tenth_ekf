@@ -1,0 +1,40 @@
+ekf_node:
+  ros__parameters:
+    # ---- topics / frames
+    odom_topic: /odom                # vesc_to_odom_node
+    imu_topic: /sensors/imu/raw      # vesc_driver_node (VESC onboard IMU)
+    output_topic: /ekf/odom          # point the particle filter's odometry_topic here
+    odom_frame: odom
+    base_frame: base_link
+    publish_tf: true                 # odom->base_link; set vesc_to_odom publish_tf: false
+
+    # ---- gyro interpretation (VESC sends deg/s; axis/sign depend on mounting)
+    gyro_axis: z
+    gyro_scale: 0.017453292519943295 # deg/s -> rad/s
+    gyro_sign: 1.0                   # node logs an error if this looks flipped
+
+    # ---- servo-command yaw rate from /odom: fallback | always | never
+    odom_yaw_rate_mode: fallback
+    imu_timeout: 0.25                # s without IMU before falling back
+
+    # ---- zero-rate updates while stopped (learn gyro bias)
+    stationary_speed: 0.01           # m/s; vesc_to_odom already zeroes |v| < 0.05
+    zupt_max_gyro: 0.3               # rad/s; skip ZUPT if car is being rotated by hand
+
+    # ---- process noise
+    accel_noise: 4.0                 # m/s^2
+    yaw_accel_noise: 6.0             # rad/s^2
+    gyro_bias_noise: 0.0002          # rad/s/sqrt(s)
+
+    # ---- measurement noise (std dev)
+    odom_speed_std: 0.05             # m/s
+    odom_speed_std_rel: 0.05         # extra fraction of |v| (wheel slip)
+    odom_yaw_rate_std: 0.5           # rad/s
+    gyro_std: 0.03                   # rad/s
+    zupt_yaw_rate_std: 0.005         # rad/s
+    init_gyro_bias_std: 0.05         # rad/s
+
+    # ---- robustness
+    max_step: 0.01                   # s, prediction sub-step
+    max_gap: 0.5                     # s, longer data gaps are clamped
+    gate_chi2: 0.0                   # innovation gate (1 dof), 0 = off; try 9.0
