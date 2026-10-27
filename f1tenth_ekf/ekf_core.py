@@ -32,7 +32,15 @@ import numpy as np
 IX, IY, ITH, IV, IW, IBG = range(6)
 N = 6
 
-
+"""
+Alongside the state x there is P, a 6×6 covariance matrix. The diagonal holds the variance (uncertainty squared) 
+of each state. The off-diagonal entries record how errors in two states are linked; for example, 
+a heading error causes a position error. Those links let one measurement correct several states at once.
+"""
+"""
+The bias is a state because cheap MEMS gyros like the VESC’s read slightly non-zero when still, 
+and that offset drifts with temperature
+"""
 class PlanarEKF:
 
     def __init__(self, params=None):
@@ -108,9 +116,10 @@ class PlanarEKF:
             dt -= step
         self.t = float(t)
         return True
-
+    # _predict assumes speed and yaw are constant ovfer dt, and move the car along that arc
     def _predict(self, dt):
         x, y, th, v, w, bg = self.x
+        #uses the heading at the midpoint of the step
         thm = th + 0.5 * w * dt
         c, s = math.cos(thm), math.sin(thm)
 
@@ -119,13 +128,13 @@ class PlanarEKF:
         self.x[ITH] = th + w * dt
 
         F = np.eye(N)
-        F[IX, ITH] = -v * s * dt
+        F[IX, ITH] = -v * s * dt # says a heading error turns into a sideways position error, scaled by speed.
         F[IX, IV] = c * dt
         F[IX, IW] = -0.5 * v * s * dt * dt
         F[IY, ITH] = v * c * dt
         F[IY, IV] = s * dt
         F[IY, IW] = 0.5 * v * c * dt * dt
-        F[ITH, IW] = dt
+        F[ITH, IW] = dt # says a yaw-rate error accumulates into heading
 
         # Noise inputs: longitudinal accel, yaw accel, bias random walk.
         G = np.zeros((N, 3))
@@ -147,9 +156,9 @@ class PlanarEKF:
 
     def _update_scalar(self, name, z, H, r_std, frozen=()):
         H = np.asarray(H, dtype=float)
-        y = z - H @ self.x
+        y = z - H @ self.x # Innovation: how far the reading is from what the filter expected.
         PHt = self.P @ H
-        S = H @ PHt + r_std * r_std
+        S = H @ PHt + r_std * r_std # expected size of that mismatch. It combines the filter’s own uncertainty and the sensor noise R.
         gate = self.p['gate_chi2']
         if gate > 0.0 and y * y / S > gate:
             n = self._rejects.get(name, 0) + 1
@@ -159,7 +168,7 @@ class PlanarEKF:
                 return False
             # Persistent disagreement: the filter is probably wrong, not the sensor.
         self._rejects[name] = 0
-        K = PHt / S
+        K = PHt / S # how much to move each state
         for i in frozen:
             # Schmidt 'consider' update: this measurement may not move state i.
             # Joseph form below stays valid for any gain.
